@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>🏁 Top-Down Car Racer</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #111827;
+      color: white;
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+    }
+    h1 {
+      margin: 10px 0 5px 0;
+      font-size: 32px;
+      text-align: center;
+    }
+    p {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #d1d5db;
+    }
+    #hud {
+      display: none;
+      gap: 15px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #hud div {
+      background: #1f2937;
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    canvas {
+      display: none;
+      background: #2d3748;
+      border: 4px solid #111;
+      border-radius: 12px;
+      touch-action: none;
+    }
+    /* Controles móviles */
+    #mobileControls {
+      margin-top: 15px;
+      display: none;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    #mobileControls button {
+      padding: 20px;
+      font-size: 22px;
+      border: none;
+      border-radius: 12px;
+      background: #374151;
+      color: white;
+      font-weight: bold;
+      width: 70px;
+      height: 70px;
+    }
+    #mobileControls button:active {
+      background: #4b5563;
+    }
+    /* Menú principal */
+    #menu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-grow: 1;
+      text-align: center;
+    }
+    #menu h1 {
+      font-size: 36px;
+      margin-bottom: 20px;
+    }
+    #menu button {
+      margin: 10px;
+      padding: 15px 30px;
+      font-size: 18px;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    #menu button:hover {
+      background: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <!-- Menú principal -->
+  <div id="menu">
+    <h1>🏁 Top-Down Car Racer</h1>
+    <button id="playBtn">Jugar</button>
+    <button id="howBtn">Instrucciones</button>
+    <button id="creditsBtn">Créditos</button>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="speed">Velocidad: 0 km/h</div>
+    <div id="distance">Distancia: 0 m</div>
+    <div id="score">Puntaje: 0</div>
+    <div id="best">Mejor: 0</div>
+  </div>
+  
+  <!-- Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Controles móviles -->
+  <div id="mobileControls">
+    <button id="left">⬅️</button>
+    <button id="up">⬆️</button>
+    <button id="down">⬇️</button>
+    <button id="right">➡️</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Ajustar canvas al tamaño de la pantalla
+    function resizeCanvas(){
+      canvas.width = Math.min(window.innerWidth * 0.9, 400);
+      canvas.height = Math.min(window.innerHeight * 0.65, 600);
+    }
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    const W = () => canvas.width;
+    const H = () => canvas.height;
+
+    // Jugador
+    const player = { w: 44, h: 78, x: 0, y: 0, speed: 0 };
+
+    // Variables
+    let traffic = [];
+    let roadOffset = 0;
+    let keys = {};
+    let distance = 0, score = 0, best = 0;
+    let gameOver = false;
+    let gameStarted = false;
+
+    // Colores de autos enemigos
+    const colors = ["#7c3aed","#f59e0b","#10b981","#3b82f6","#e11d48","#22d3ee"];
+
+    function drawCar(c, isPlayer=false){
+      ctx.save();
+      ctx.translate(c.x + c.w/2, c.y + c.h/2);
+      ctx.translate(-c.w/2, -c.h/2);
+      ctx.fillStyle = isPlayer ? "#ff0000" : c.color;
+      ctx.fillRect(0, 0, c.w, c.h);
+      ctx.fillStyle = "white";
+      ctx.fillRect(6, 18, c.w-12, c.h-36);
+      ctx.fillStyle = "#f87171";
+      ctx.fillRect(6, c.h-10, 8, 6);
+      ctx.fillRect(c.w-14, c.h-10, 8, 6);
+      ctx.restore();
+    }
+
+    function newEnemy(){
+      let lane = Math.random() * (W()-60);
+      traffic.push({ w: 44, h: 78, x: lane, y: -100, color: colors[Math.floor(Math.random()*colors.length)] });
+    }
+
+    function resetGame(){
+      player.x = W()/2 - player.w/2;
+      player.y = H()*0.7;
+      player.speed = 0;
+      traffic = [];
+      distance = 0;
+      score = 0;
+      gameOver = false;
+    }
+
+    function loop(){
+      if (!gameStarted) return;
+      ctx.clearRect(0,0,W(),H());
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(60,0,W()-120,H());
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([20,20]);
+      roadOffset += 3;
+      ctx.lineDashOffset = roadOffset;
+      ctx.beginPath();
+      ctx.moveTo(W()/2,0);
+      ctx.lineTo(W()/2,H());
+      ctx.stroke();
+
+      if (!gameOver){
+        if (keys["ArrowUp"] || keys["w"]) player.y -= 5;
+        if (keys["ArrowDown"] || keys["s"]) player.y += 5;
+        if (keys["ArrowLeft"] || keys["a"]) player.x -= 5;
+        if (keys["ArrowRight"] || keys["d"]) player.x += 5;
+        if (player.x < 60) player.x = 60;
+        if (player.x+player.w > W()-60) player.x = W()-60-player.w;
+        if (player.y < 0) player.y = 0;
+        if (player.y+player.h > H()) player.y = H()-player.h;
+        distance += 0.5;
+        score = Math.floor(distance/10);
+      }
+
+      if (Math.random() < 0.02) newEnemy();
+      for (let i=traffic.length-1;i>=0;i--){
+        let c = traffic[i];
+        c.y += 4;
+        drawCar(c);
+        if (c.y > H()+100) traffic.splice(i,1);
+        if (!gameOver && player.x < c.x+c.w && player.x+player.w > c.x && player.y < c.y+c.h && player.y+player.h > c.y){
+          gameOver = true;
+          best = Math.max(best,score);
+        }
+      }
+
+      drawCar(player,true);
+      document.getElementById("speed").textContent = "Velocidad: "+Math.round(player.speed*10)+" km/h";
+      document.getElementById("distance").textContent = "Distancia: "+Math.floor(distance)+" m";
+      document.getElementById("score").textContent = "Puntaje: "+score;
+      document.getElementById("best").textContent = "Mejor: "+best;
+
+      if (gameOver){
+        ctx.fillStyle="white";
+        ctx.font="24px Arial";
+        ctx.fillText("GAME OVER",W()/2-70,H()/2);
+        ctx.font="16px Arial";
+        ctx.fillText("Refresca la pagina para reiniciar",W()/2-80,H()/2+20);
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // Eventos
+    document.addEventListener("keydown",e=>{
+      keys[e.key]=true;
+      if (gameOver && e.key.toLowerCase()=="r") resetGame();
+    });
+    document.addEventListener("keyup",e=>keys[e.key]=false);
+
+    function hold(btn,key){
+      btn.addEventListener("touchstart",(e)=>{e.preventDefault();keys[key]=true;});
+      btn.addEventListener("touchend",(e)=>{e.preventDefault();keys[key]=false;});
+    }
+    hold(document.getElementById("left"),"ArrowLeft");
+    hold(document.getElementById("right"),"ArrowRight");
+    hold(document.getElementById("up"),"ArrowUp");
+    hold(document.getElementById("down"),"ArrowDown");
+
+    // Botones del menú
+    document.getElementById("playBtn").addEventListener("click",()=>{
+      document.getElementById("menu").style.display = "none";
+      document.getElementById("hud").style.display = "flex";
+      canvas.style.display = "block";
+      document.getElementById("mobileControls").style.display = "flex";
+      resetGame();
+      gameStarted = true;
+      loop();
+    });
+    document.getElementById("howBtn").addEventListener("click",()=>{
+      alert("Controles: Móvil: botones en pantalla\nEvita chocar con otros autos y llega lo más lejos posible.");
+    });
+    document.getElementById("creditsBtn").addEventListener("click",()=>{
+      alert("Juego creado por: Maicol Lancheros, Samuel Saavedra y Kevin Gonzalez \nCon HTML, CSS y JavaScript.");
+    });
+  </script>
+</body>
+</html>
